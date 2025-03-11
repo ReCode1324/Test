@@ -208,7 +208,7 @@ def _download(url, path):
 def argoTunnel():
     _download(extract_link(), "cloudflared.deb")
     cfd_proc = subprocess.Popen(
-        ["./content/cloudflared.deb", "tunnel", "--url", "ssh://localhost:22", "--logfile", "cloudflared.log", "--metrics", "localhost:49589"],
+        ["/content/cloudflared.deb", "tunnel", "--url", "ssh://localhost:22", "--logfile", "cloudflared.log", "--metrics", "localhost:49589"],
         stdout = subprocess.PIPE,
         universal_newlines = True
         )
