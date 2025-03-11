@@ -183,6 +183,19 @@ def updateCheck(self, Version):
     else:
         print("Script Update Checker: Your script is up to date")
 
+def extract_link():
+    url = "https://github.com/cloudflare/cloudflared/releases/latest"
+    try:
+        with urllib.request.urlopen(url) as response:
+            final_url = response.geturl()
+            version_match = re.search(r'/tag/([\d\.]+)', final_url)
+            if version_match:
+                download_link = f"https://github.com/cloudflare/cloudflared/releases/download/{version_match.group(1)}/cloudflared-linux-amd64.deb"
+                return download_link
+            return None
+    except Exception as e:
+        print(f"Unknown Error: {str(e)}")
+
 def _download(url, path):
     try:
         with urllib.request.urlopen(url) as response:
@@ -193,8 +206,7 @@ def _download(url, path):
         raise
 
 def argoTunnel():
-    _download("https://bin.equinox.io/c/VdrWdbjqyF/cloudflared-stable-linux-amd64.tgz", "cloudflared.tgz")
-    shutil.unpack_archive("cloudflared.tgz")
+    _download(extract_link(), "cloudflared.deb")
     cfd_proc = subprocess.Popen(
         ["./cloudflared", "tunnel", "--url", "ssh://localhost:22", "--logfile", "cloudflared.log", "--metrics", "localhost:49589"],
         stdout = subprocess.PIPE,
