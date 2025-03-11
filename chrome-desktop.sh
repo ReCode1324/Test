@@ -1,7 +1,7 @@
 #!/bin/bash
 if [ "$(id -u)" -ne 0 ]; then
-    exec sudo -i -- bash "$0" "$@" >/dev/null 2>&1
-    exit 0
+    exec sudo -i -- bash "$0" "$@"
+    exit 1
 fi
 
 CRP="$1"
@@ -9,30 +9,24 @@ USER="$2"
 PASS="$3"
 PIN="$4"
 
-{
-[[ -z "$CRP" || -z "$USER" || -z "$PASS" || ${#PIN} -lt 6 ]] && exit 1
+# اعتبارسنجی ورودی‌ها
+[[ -z "$CRP" ]] && { echo "Error: CRP missing"; exit 1; }
+[[ -z "$USER" ]] && { echo "Error: USER missing"; exit 1; }
+[[ -z "$PASS" ]] && { echo "Error: PASS missing"; exit 1; }
+[[ ${#PIN} -lt 6 ]] && { echo "Error: Invalid PIN"; exit 1; }
 
-apt-get update -qq && apt-get upgrade -qq -y
-apt-get install -qq -y wget dpkg
+# مراحل نصب
+apt-get update -y
+apt-get install -y wget
 
-wget -q https://dl.google.com/linux/direct/chrome-remote-desktop_current_amd64.deb
-dpkg --force-all -i chrome-remote-desktop_current_amd64.deb >/dev/null 2>&1 || apt-get install -qq -y -f
+wget https://dl.google.com/linux/direct/chrome-remote-desktop_current_amd64.deb
+dpkg -i chrome-remote-desktop_current_amd64.deb || apt-get install -f -y
 
-export DEBIAN_FRONTEND=noninteractive
-apt-get install -qq -y xfce4 xfce4-terminal xscreensaver
+apt-get install -y xfce4 xfce4-terminal
 
-wget -q https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb
-dpkg --force-all -i google-chrome-stable_current_amd64.deb >/dev/null 2>&1 || apt-get install -qq -y -f
-
-id -u "$USER" &>/dev/null || useradd -m -s /bin/bash "$USER"
+useradd -m -s /bin/bash "$USER" 2>/dev/null || true
 echo "$USER:$PASS" | chpasswd
-usermod -aG chrome-remote-desktop "$USER" >/dev/null 2>&1
+usermod -aG chrome-remote-desktop "$USER"
 
-mkdir -p /home/$USER/.config/chrome-remote-desktop
-chown -R $USER:$USER /home/$USER
-
-su - $USER -c "$CRP --pin=$PIN" >/dev/null 2>&1
+su - $USER -c "$CRP --pin=$PIN"
 systemctl restart chrome-remote-desktop
-systemctl enable chrome-remote-desktop --quiet
-
-} >/dev/null 2>&1
