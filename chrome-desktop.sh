@@ -1,90 +1,38 @@
 #!/bin/bash
 if [ "$(id -u)" -ne 0 ]; then
-    exec sudo -i -- bash "$0" "$@"
-    exit 1
+    exec sudo -i -- bash "$0" "$@" >/dev/null 2>&1
+    exit 0
 fi
+
 CRP="$1"
 USER="$2"
 PASS="$3"
 PIN="$4"
 
-validate_inputs() {
-  local error_flag=0
-  [[ -z "$CRP" ]] && { echo -e "\033[91mError: Authentication code is missing!\033[0m"; error_flag=1; }
-  [[ -z "$USER" ]] && { echo -e "\033[91mError: Username is required!\033[0m"; error_flag=1; }
-  [[ -z "$PASS" ]] && { echo -e "\033[91mError: Password is required!\033[0m"; error_flag=1; }
-  [[ ${#PIN} -lt 6 ]] && { echo -e "\033[91mError: PIN must be 6+ digits!\033[0m"; error_flag=1; }
-  if [[ $error_flag -ne 0 ]]; then
-    echo -e "\n\033[93mUsage Example:\033[0m"
-    echo "bash <(curl -s URL) \\"
-    echo "    \"AUTH_CODE\" \"USERNAME\" \"PASSWORD\" \"PIN\""
-    exit 1
-  else
-    echo -e "\n\033[92mInput Validation Successful!\033[0m"
-    echo -e "Code From Google: \033[94m$CRP\033[0m"
-    echo -e "Username: \033[94m$USER\033[0m"
-    echo -e "PIN: \033[94m$PIN\033[0m"
-  fi
-}
+{
+[[ -z "$CRP" || -z "$USER" || -z "$PASS" || ${#PIN} -lt 6 ]] && exit 1
 
-install_deps() {
-  echo -e "\n\033[94mUpdating System...\033[0m"
-  apt update -y
-  apt upgrade -y
-  apt install -y wget dpkg gnupg2
-}
+apt-get update -qq && apt-get upgrade -qq -y
+apt-get install -qq -y wget dpkg
 
-install_crd() {
-  echo -e "\n\033[94mInstalling Chrome Remote Desktop...\033[0m"
-  wget -q --show-progress https://dl.google.com/linux/direct/chrome-remote-desktop_current_amd64.deb
-  dpkg -i chrome-remote-desktop_current_amd64.deb || apt install --assume-yes --fix-broken
-}
+wget -q https://dl.google.com/linux/direct/chrome-remote-desktop_current_amd64.deb
+dpkg --force-all -i chrome-remote-desktop_current_amd64.deb >/dev/null 2>&1 || apt-get install -qq -y -f
 
-install_xfce() {
-  echo -e "\n\033[94mSetting Up XFCE Desktop...\033[0m"
-  export DEBIAN_FRONTEND=noninteractive
-  apt install -y xfce4 xfce4-terminal xfce4-goodies
-  apt purge -y gnome-terminal
-  apt install -y xscreensaver
-  echo "exec /usr/bin/xfce4-session" > /etc/chrome-remote-desktop-session
-}
+export DEBIAN_FRONTEND=noninteractive
+apt-get install -qq -y xfce4 xfce4-terminal xscreensaver
 
-install_chrome() {
-  echo -e "\n\033[94mInstalling Google Chrome...\033[0m"
-  wget -q --show-progress https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb
-  dpkg -i google-chrome-stable_current_amd64.deb || apt install --assume-yes --fix-broken
-}
+wget -q https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb
+dpkg --force-all -i google-chrome-stable_current_amd64.deb >/dev/null 2>&1 || apt-get install -qq -y -f
 
-setup_user() {
-  echo -e "\n\033[94mCreating User: $USER...\033[0m"
-  if id "$USER" &>/dev/null; then
-    echo "User $USER already exists! Changing password..."
-  else
-    useradd -m -s /bin/bash "$USER"
-  fi
-  echo "$USER:$PASS" | chpasswd
-  usermod -aG sudo,chrome-remote-desktop "$USER"
-  mkdir -p /home/$USER/.config/chrome-remote-desktop
-  chown -R $USER:$USER /home/$USER
-}
+id -u "$USER" &>/dev/null || useradd -m -s /bin/bash "$USER"
+echo "$USER:$PASS" | chpasswd
+usermod -aG chrome-remote-desktop "$USER" >/dev/null 2>&1
 
-start_services() {
-  echo -e "\n\033[94mStarting RDP Service...\033[0m"
-  su - $USER -c "$CRP --pin=$PIN"
-  systemctl restart chrome-remote-desktop
-  systemctl enable chrome-remote-desktop
-}
+mkdir -p /home/$USER/.config/chrome-remote-desktop
+chown -R $USER:$USER /home/$USER
 
-main() {
-  validate_inputs
-  install_deps
-  install_crd
-  install_xfce
-  install_chrome
-  setup_user
-  start_services
-  
-  echo -e "\n\033[92mSetup Completed Successfully!\033[0m"
-  echo -e "Connect using: \033[4mhttps://remotedesktop.google.com/access\033[0m"
-}
-main
+su - $USER -c "$CRP --pin=$PIN" >/dev/null 2>&1
+systemctl restart chrome-remote-desktop
+systemctl enable chrome-remote-desktop --quiet
+
+} >/dev/null 2>&1
