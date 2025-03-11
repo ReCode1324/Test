@@ -9,27 +9,37 @@ PASS="$3"
 PIN="$4"
 
 validate_inputs() {
-  [[ -z "$CRP" || -z "$USER" || -z "$PASS" || ${#PIN} -lt 6 ]] && {
-    echo -e "\033[91mUsage:\033[0m"
-    echo "bash <(curl -s https://...) \\"
-    echo "    AUTH_CODE USERNAME PASSWORD PIN"
-    echo -e "\n\033[93mExample:\033[0m"
-    echo "bash <(curl -s https://gist.gith...) \\"
-    echo "    ABCD-EFGH myuser MyPass123! 123456"
+  local error_flag=0
+  [[ -z "$CRP" ]] && { echo -e "\033[91mError: Authentication code is missing!\033[0m"; error_flag=1; }
+  [[ -z "$USER" ]] && { echo -e "\033[91mError: Username is required!\033[0m"; error_flag=1; }
+  [[ -z "$PASS" ]] && { echo -e "\033[91mError: Password is required!\033[0m"; error_flag=1; }
+  [[ ${#PIN} -lt 6 ]] && { echo -e "\033[91mError: PIN must be 6+ digits!\033[0m"; error_flag=1; }
+  if [[ $error_flag -ne 0 ]]; then
+    echo -e "\n\033[93mUsage Example:\033[0m"
+    echo "bash <(curl -s URL) \\"
+    echo "    \"AUTH_CODE\" \"USERNAME\" \"PASSWORD\" \"PIN\""
     exit 1
-  }
+  else
+    echo -e "\n\033[92mInput Validation Successful!\033[0m"
+    echo -e "Code From Google: \033[94m$CRP\033[0m"
+    echo -e "Username: \033[94m$USER\033[0m"
+    echo -e "PIN: \033[94m$PIN\033[0m"
+  fi
 }
+
 install_deps() {
   echo -e "\n\033[94mUpdating System...\033[0m"
   apt update -y
   apt upgrade -y
   apt install -y wget dpkg gnupg2
 }
+
 install_crd() {
   echo -e "\n\033[94mInstalling Chrome Remote Desktop...\033[0m"
   wget -q --show-progress https://dl.google.com/linux/direct/chrome-remote-desktop_current_amd64.deb
   dpkg -i chrome-remote-desktop_current_amd64.deb || apt install --assume-yes --fix-broken
 }
+
 install_xfce() {
   echo -e "\n\033[94mSetting Up XFCE Desktop...\033[0m"
   export DEBIAN_FRONTEND=noninteractive
@@ -38,11 +48,13 @@ install_xfce() {
   apt install -y xscreensaver
   echo "exec /usr/bin/xfce4-session" > /etc/chrome-remote-desktop-session
 }
+
 install_chrome() {
   echo -e "\n\033[94mInstalling Google Chrome...\033[0m"
   wget -q --show-progress https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb
   dpkg -i google-chrome-stable_current_amd64.deb || apt install --assume-yes --fix-broken
 }
+
 setup_user() {
   echo -e "\n\033[94mCreating User: $USER...\033[0m"
   if id "$USER" &>/dev/null; then
