@@ -188,47 +188,72 @@ def extract_link():
     try:
         with urllib.request.urlopen(url) as response:
             final_url = response.geturl()
-            version_match = re.search(r'/tag/([\d\.]+)', final_url)
+            version_match = re.search(r'/tag/(v?[\d\.]+(-[a-zA-Z0-9_]+)?)', final_url)
             if version_match:
-                download_link = f"https://github.com/cloudflare/cloudflared/releases/download/{version_match.group(1)}/cloudflared-linux-amd64.deb"
+                version = version_match.group(1)
+                download_link = f"https://github.com/cloudflare/cloudflared/releases/download/{version}/cloudflared-linux-amd64.deb"
                 return download_link
             return None
     except Exception as e:
-        print(f"Unknown Error: {str(e)}")
+        print(f"Error: {str(e)}")
+        return None
 
 def _download(url, path):
     try:
+        os.makedirs(os.path.dirname(path), exist_ok=True)
         with urllib.request.urlopen(url) as response:
             with open(path, 'wb') as outfile:
                 shutil.copyfileobj(response, outfile)
-    except:
-        print("Failed to download ", url)
+        print(f"Downloaded successfully to: {path}")
+    except Exception as e:
+        print(f"Download failed: {str(e)}")
         raise
 
 def argoTunnel():
-    _download(extract_link(), "cloudflared.deb")
+    download_url = extract_link()
+    if not download_url:
+        raise ValueError("Failed to get download URL")
+    
+    deb_path = "/content/cloudflared.deb"
+    _download(download_url, deb_path)
+    
+    try:
+        subprocess.check_call(["sudo", "dpkg", "-i", deb_path], stderr=subprocess.STDOUT)
+        subprocess.check_call(["sudo", "apt-get", "install", "-f", "-y"], stderr=subprocess.STDOUT)
+    except subprocess.CalledProcessError as e:
+        raise RuntimeError(f"Installation failed: {e.output}")
+    
     cfd_proc = subprocess.Popen(
-        ["/content/cloudflared.deb", "tunnel", "--url", "ssh://localhost:22", "--logfile", "cloudflared.log", "--metrics", "localhost:49589"],
-        stdout = subprocess.PIPE,
-        universal_newlines = True
-        )
+        ["cloudflared", "tunnel", "--url", "ssh://localhost:22", "--logfile", "cloudflared.log", "--metrics", "localhost:49589"],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        universal_newlines=True
+    )
     time.sleep(4)
-    if cfd_proc.poll() != None:
-        raise RuntimeError("Failed to run cloudflared. Return code:" + str(cloudflared.returncode) + "\nSee clouldflared.log for more info.")
+    
+    if cfd_proc.poll() is not None:
+        raise RuntimeError(f"cloudflared failed to start. Exit code: {cfd_proc.returncode}")
+    
     hostname = None
+    
     # Sometimes it takes long time to display user host name in cloudflared metrices.
-    for i in range(20):
-        with urllib.request.urlopen("http://127.0.0.1:49589/metrics") as response:
-            text = str(response.read())
-            sub = "\\ncloudflared_tunnel_user_hostnames_counts{userHostname=\"https://"
-            begin = text.find(sub)
-            if begin == -1:
-                time.sleep(10)
-                #print("Retry reading cloudflared user hostname")
-                continue
-            end = text.index("\"", begin + len(sub))
-            hostname = text[begin + len(sub) : end]
-            break
-        if hostname == None:
-            raise RuntimeError("Failed to get user hostname from cloudflared")
+    for _ in range(20):
+        try:
+            with urllib.request.urlopen("http://127.0.0.1:49589/metrics") as response:
+                text = response.read().decode('utf-8')
+                target = 'cloudflared_tunnel_user_hostnames_counts{userHostname="https://'
+                start_idx = text.find(target)
+                if start_idx != -1:
+                    end_idx = text.find('"', start_idx + len(target))
+                    hostname = text[start_idx + len(target):end_idx]
+                    break
+            time.sleep(10)
+        except Exception as e:
+            print(f"Retrying... ({str(e)})")
+            time.sleep(10)
+    
+    if not hostname:
+        cfd_proc.terminate()
+        raise RuntimeError("Failed to get hostname after 20 attempts")
     return hostname
+    
